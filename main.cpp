@@ -96,6 +96,13 @@ int main() {
     std::cout << "Introduce la llave para cifrar el texto (entero): ";
     std::cin >> keyToEncrypt;
 
+    // Indicar al usuario la longitud de la llave
+    if (keyToEncrypt > 0) {
+        std::cout << "La longitud de la llave es: " << std::to_string(keyToEncrypt).length() << " bytes" << std::endl;
+    } else {
+        std::cout << "La longitud de la llave es: 0 bytes" << std::endl;
+    }
+
     std::string phrase;
     std::cout << "Introduce la frase para verificar el descifrado: ";
     std::cin.ignore(); // Limpiar el buffer de entrada
@@ -105,11 +112,14 @@ int main() {
     encrypt(keyToEncrypt, cipher.data(), cipher.size());
 
     // Mostrar el texto cifrado
-    std::cout << "Texto cifrado: ";
+    /*
+        std::cout << "Texto cifrado: ";
     for (auto c : cipher) {
         std::cout << std::hex << static_cast<int>(c) << " ";
     }
     std::cout << std::dec << std::endl;
+    */
+
 
     // Medir el tiempo de ejecución
     auto start = std::chrono::high_resolution_clock::now();
@@ -123,9 +133,11 @@ int main() {
             break;
         }
         // Opcional: Mostrar progreso cada cierto número de iteraciones
+        /*
         if (i % 1000000 == 0) {
             std::cout << "Progreso: " << i << " claves probadas." << std::endl;
         }
+        */
     }
 
     // Medir el tiempo final
@@ -139,14 +151,23 @@ int main() {
         decryptedData = removePadding(decryptedData);
         decryptedData.push_back('\0'); // Asegurar terminación nula
         std::string decryptedText(reinterpret_cast<const char*>(decryptedData.data()), decryptedData.size());
-        std::cout << "La llave correcta es: " << found << std::endl;
-        std::cout << "El texto descifrado es: " << decryptedText << std::endl;
+        std::cout << "  La llave correcta es: " << found << std::endl;
+        std::cout << "  El texto descifrado es: " << decryptedText << std::endl;
     } else {
-        std::cout << "No se encontró una llave válida." << std::endl;
+        std::cout << "  No se encontró una llave válida." << std::endl;
     }
 
     // Mostrar el tiempo tomado
-    std::cout << "Tiempo tomado para encontrar la llave: " << duration.count() << " segundos" << std::endl;
+    std::cout << "  Tiempo tomado para encontrar la llave: " << duration.count() << " segundos" << std::endl;
 
     return 0;
 }
+
+/**
+
+To compile it:
+
+g++ -o bruteforce_sequential main.cpp -lssl -lcrypto
+
+./bruteforce_sequential
+ */
