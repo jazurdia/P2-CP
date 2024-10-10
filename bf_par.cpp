@@ -132,6 +132,10 @@ int main(int argc, char* argv[]) {
         std::getline(std::cin, phrase);
 
         std::cout << std::endl;
+
+        std::cout << "\nIniciando búsqueda de la llave correcta..." << std::endl;
+
+
     }
 
     // Sincronizar procesos y asegurar que otros esperen hasta que el rank 0 esté listo
@@ -208,11 +212,11 @@ int main(int argc, char* argv[]) {
         }
 
         if (key % 1000000 == 0) {
-            std::cout << "Rank " << rank << " está probando la llave: " << key << std::endl;
+            std::cout << "\t⇨ Rank " << rank << " está probando la llave: " << key << std::endl;
         }
 
         if (tryKey(key, cipher.data(), cipher.size(), phrase)) {
-            std::cout << "Rank " << rank << " encontró la llave: " << key << std::endl;
+            std::cout << "\t➨ Rank " << rank << " encontró la llave: " << key << std::endl;
 
             found = key;
             keyFound = true;

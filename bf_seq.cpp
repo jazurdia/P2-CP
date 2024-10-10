@@ -96,29 +96,39 @@ int main() {
     std::cout << "Introduce la llave para cifrar el texto (entero): ";
     std::cin >> keyToEncrypt;
 
-    // Indicar al usuario la longitud de la llave
-    if (keyToEncrypt > 0) {
-        std::cout << "La longitud de la llave es: " << std::to_string(keyToEncrypt).length() << " bytes" << std::endl;
+    // Calcular la longitud de la llave en bytes (código corregido)
+    unsigned int keyByteLength = 0;
+    unsigned long long tempKeyLength = keyToEncrypt;
+    if (tempKeyLength == 0) {
+        keyByteLength = 1; // Si la llave es 0, ocupa al menos 1 byte
     } else {
-        std::cout << "La longitud de la llave es: 0 bytes" << std::endl;
+        while (tempKeyLength > 0) {
+            keyByteLength++;
+            tempKeyLength >>= 8; // Desplazar 8 bits (1 byte)
+        }
     }
 
-    std::string phrase;
-    std::cout << "Introduce la frase para verificar el descifrado: ";
-    std::cin.ignore(); // Limpiar el buffer de entrada
-    std::getline(std::cin, phrase);
+    std::cout << "La longitud de la llave es: " << keyByteLength << " bytes" << std::endl;
 
     // Cifrar el texto usando la llave proporcionada
+    std::cout << "\nIniciando cifrado..." << std::endl;
     encrypt(keyToEncrypt, cipher.data(), cipher.size());
-
+    std::cout << "Cifrado terminado." << std::endl;
     // Mostrar el texto cifrado
-    /*
-        std::cout << "Texto cifrado: ";
+    
+    std::cout << "Texto cifrado: ";
     for (auto c : cipher) {
         std::cout << std::hex << static_cast<int>(c) << " ";
     }
     std::cout << std::dec << std::endl;
-    */
+
+
+    std::string phrase;
+    std::cout << "\nIntroduce la frase para verificar el descifrado: ";
+    std::cin.ignore(); // Limpiar el buffer de entrada
+    std::getline(std::cin, phrase);
+
+    std::cout << "\nIniciando búsqueda de la llave correcta..." << std::endl;
 
 
     // Medir el tiempo de ejecución
@@ -133,11 +143,11 @@ int main() {
             break;
         }
         // Opcional: Mostrar progreso cada cierto número de iteraciones
-        /*
+        
         if (i % 1000000 == 0) {
-            std::cout << "Progreso: " << i << " claves probadas." << std::endl;
+            std::cout << "\t⇨ Progreso: " << i << " millones de claves probadas." << std::endl;
         }
-        */
+        
     }
 
     // Medir el tiempo final
@@ -151,14 +161,14 @@ int main() {
         decryptedData = removePadding(decryptedData);
         decryptedData.push_back('\0'); // Asegurar terminación nula
         std::string decryptedText(reinterpret_cast<const char*>(decryptedData.data()), decryptedData.size());
-        std::cout << "  La llave correcta es: " << found << std::endl;
-        std::cout << "  El texto descifrado es: " << decryptedText << std::endl;
+        std::cout << "\nLa llave correcta es: " << found << std::endl;
+        std::cout << "El texto descifrado es: " << decryptedText << std::endl;
     } else {
-        std::cout << "  No se encontró una llave válida." << std::endl;
+        std::cout << "No se encontró una llave válida." << std::endl;
     }
 
     // Mostrar el tiempo tomado
-    std::cout << "  Tiempo tomado para encontrar la llave: " << duration.count() << " segundos" << std::endl;
+    std::cout << "Tiempo tomado para encontrar la llave: " << duration.count() << " segundos" << std::endl;
 
     return 0;
 }
@@ -167,7 +177,9 @@ int main() {
 
 To compile it:
 
-g++ -o bruteforce_sequential main.cpp -lssl -lcrypto
+g++ -o bf_sequential bf_seq.cpp -lssl -lcrypto
 
-./bruteforce_sequential
+./bf_sequential
+
+
  */
