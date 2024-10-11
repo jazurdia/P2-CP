@@ -75,25 +75,37 @@ bool decrypt(const std::string& userKey, unsigned char* data, int len) {
 }
 
 // Generar una tabla rainbow para un rango de llaves
+// Generar una tabla rainbow para un rango de llaves
 void generateRainbowTable(unsigned long long lowerLimit, unsigned long long upperLimit, int chainLength, std::unordered_map<std::string, unsigned long long>& rainbowTable) {
-    std::string knownText = "hello"; // Texto conocido para cifrar y generar hashes
+    std::string knownText = "proyecto"; // Texto conocido para cifrar y generar hashes
     unsigned char data[8];
     memcpy(data, knownText.c_str(), 8);
+
+    std::cout << "Iniciando generación de la tabla rainbow..." << std::endl;
+    std::cout << "Rango de llaves: " << lowerLimit << " a " << upperLimit << std::endl;
+    std::cout << "Longitud de la cadena: " << chainLength << std::endl;
 
     for (unsigned long long key = lowerLimit; key <= upperLimit; ++key) {
         unsigned long long currentKey = key;
         std::string hash;
-        
+
+        std::cout << "Procesando llave: " << key << std::endl;
+
         for (int i = 0; i < chainLength; ++i) {
+            std::cout << "  Ronda " << i << ": Clave actual: " << currentKey << std::endl;
             encrypt(std::to_string(currentKey), data, 8);
             hash = hashFunction(data, 8);
+            std::cout << "  Ronda " << i << ": Hash generado: " << hash << std::endl;
             currentKey = reduceHash(hash, i);
+            std::cout << "  Ronda " << i << ": Clave reducida: " << currentKey << std::endl;
         }
 
+        std::cout << "Hash final: " << hash << " para la llave original: " << key << std::endl;
         rainbowTable[hash] = key; // Guardar el hash final y la llave original
     }
-}
 
+    std::cout << "Generación de la tabla rainbow completada." << std::endl;
+}
 // Buscar una llave en la tabla rainbow
 unsigned long long searchRainbowTable(const std::unordered_map<std::string, unsigned long long>& rainbowTable, const unsigned char* cipher, int len, int chainLength) {
     std::string hash = hashFunction(cipher, len);
@@ -161,7 +173,7 @@ int main(int argc, char* argv[]) {
 
         // Generar Rainbow Table
         unsigned long long lowerLimit = 0; // Límite inferior de llaves
-        unsigned long long upperLimit = 99999999; // Límite superior de llaves
+        unsigned long long upperLimit = 99999; // Límite superior de llaves
         int chainLength = 1000; // Longitud de cadena en la tabla rainbow
 
         std::unordered_map<std::string, unsigned long long> rainbowTable;
@@ -173,3 +185,12 @@ int main(int argc, char* argv[]) {
     MPI_Finalize();
     return 0;
 }
+
+/**
+compilar con:
+mpic++ mpic++ -o rainbowtable rainbowtable.cpp -lssl -lcrypto
+
+
+mpirun -np 4 ./rainbowtable
+
+ */

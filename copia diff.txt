@@ -1,0 +1,309 @@
+#include <iostream>
+#include <fstream>
+#include <cstring>
+#include <vector>
+#include <openssl/des.h>
+#include <chrono>
+#include <mpi.h>
+#include <cmath>
+
+// Definir el número de rondas para el cifrado DES reducido
+#define NUM_ROUNDS 16
+
+// Función para agregar padding PKCS#7
+std::vector<unsigned char> addPadding(const std::vector<unsigned char>& data) {
+    std::vector<unsigned char> padded = data;
+    int padding = 8 - (data.size() % 8);
+    if (padding == 0) padding = 8;
+    for (int i = 0; i < padding; ++i) {
+        padded.push_back(static_cast<unsigned char>(padding));
+    }
+    return padded;
+}
+
+// Función para quitar padding PKCS#7
+std::vector<unsigned char> removePadding(const std::vector<unsigned char>& data) {
+    if (data.empty()) return data;
+    int padding = data.back();
+    if (padding < 1 || padding > 8) return data;
+    return std::vector<unsigned char>(data.begin(), data.end() - padding);
+}
+
+void encrypt_DES_reduced(unsigned long long key, unsigned char* data, int len) {
+    DES_key_schedule ks[NUM_ROUNDS];
+
+    // Preparar la clave base
+    DES_cblock keyBlock;
+    for (int i = 0; i < 8; ++i) {
+        keyBlock[i] = (key >> (8 * (7 - i))) & 0xFF;
+    }
+
+    // Generar los subkeys para cada ronda
+    for (int i = 0; i < NUM_ROUNDS; ++i) {
+        DES_cblock roundKeyBlock;
+        unsigned long long roundKey = ((key << i) | (key >> (56 - i))) & 0xFFFFFFFFFFFFFF; // Clave de 56 bits
+        for (int j = 0; j < 8; ++j) {
+            roundKeyBlock[j] = (roundKey >> (8 * (7 - j))) & 0xFF;
+        }
+        DES_set_odd_parity(&roundKeyBlock);
+        DES_set_key_unchecked(&roundKeyBlock, &ks[i]);
+    }
+
+    // Cifrar
+    for (int i = 0; i < len; i += 8) {
+        DES_cblock inputBlock;
+        memcpy(inputBlock, data + i, 8);
+
+        for (int round = 0; round < NUM_ROUNDS; ++round) {
+            DES_ecb_encrypt(&inputBlock, &inputBlock, &ks[round], DES_ENCRYPT);
+        }
+
+        memcpy(data + i, inputBlock, 8);
+    }
+}
+
+void decrypt_DES_reduced(unsigned long long key, unsigned char* data, int len) {
+    DES_key_schedule ks[NUM_ROUNDS];
+
+    // Preparar la clave base
+    DES_cblock keyBlock;
+    for (int i = 0; i < 8; ++i) {
+        keyBlock[i] = (key >> (8 * (7 - i))) & 0xFF;
+    }
+
+    // Generar los subkeys para cada ronda
+    for (int i = 0; i < NUM_ROUNDS; ++i) {
+        DES_cblock roundKeyBlock;
+        unsigned long long roundKey = ((key << i) | (key >> (56 - i))) & 0xFFFFFFFFFFFFFF; // Clave de 56 bits
+        for (int j = 0; j < 8; j++) {
+            roundKeyBlock[j] = (roundKey >> (8 * (7 - j))) & 0xFF;
+        }
+        DES_set_odd_parity(&roundKeyBlock);
+        DES_set_key_unchecked(&roundKeyBlock, &ks[i]);
+    }
+
+    // Descifrar
+    for (int i = 0; i < len; i += 8) {
+        DES_cblock inputBlock;
+        memcpy(inputBlock, data + i, 8);
+
+        for (int round = NUM_ROUNDS - 1; round >= 0; --round) {
+            DES_ecb_encrypt(&inputBlock, &inputBlock, &ks[round], DES_DECRYPT);
+        }
+
+        memcpy(data + i, inputBlock, 8);
+    }
+}
+
+// Función para extraer un bit específico de un vector de unsigned char
+unsigned char getBit(const std::vector<unsigned char>& data, int bitIndex) {
+    int byteIndex = bitIndex / 8;
+    int bitOffset = 7 - (bitIndex % 8); // Bits en big endian
+    return (data[byteIndex] >> bitOffset) & 0x01;
+}
+
+// Modificar la función calculateApproximation
+int calculateApproximation(const std::vector<unsigned char>& pt, const std::vector<unsigned char>& ct, int subkeyCandidate) {
+    unsigned char p_bit0 = getBit(pt, 0);
+    unsigned char p_bit1 = getBit(pt, 1);
+    unsigned char p_bit2 = getBit(pt, 2);
+    unsigned char c_bit0 = getBit(ct, 0);
+    unsigned char c_bit1 = getBit(ct, 1);
+    unsigned char c_bit2 = getBit(ct, 2);
+    unsigned char k_bit0 = (subkeyCandidate >> 0) & 0x01;
+    unsigned char k_bit1 = (subkeyCandidate >> 1) & 0x01;
+    unsigned char k_bit2 = (subkeyCandidate >> 2) & 0x01;
+
+    unsigned char approx = p_bit0 ^ p_bit1 ^ p_bit2 ^ c_bit0 ^ c_bit1 ^ c_bit2 ^ k_bit0 ^ k_bit1 ^ k_bit2;
+
+    return approx;
+}
+
+double calculateBias(int localCount, unsigned long long localPairs) {
+    return fabs(static_cast<double>(localCount) / localPairs - 0.5);
+}
+
+int main(int argc, char* argv[]) {
+    MPI_Init(&argc, &argv);
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    unsigned long long keyToEncrypt = 0;
+    std::vector<unsigned char> cipher;
+    std::string phrase;
+    std::vector<unsigned char> plaintext;
+
+    if (rank == 0) {
+        // Leer el texto desde el archivo input.txt
+        std::ifstream inputFile("input.txt");
+        if (!inputFile) {
+            std::cerr << "Error: no se pudo abrir el archivo input.txt" << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        std::string text((std::istreambuf_iterator<char>(inputFile)), std::istreambuf_iterator<char>());
+        inputFile.close();
+        if (text.empty()) {
+            std::cerr << "El archivo input.txt está vacío." << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+
+        // Convertir el texto a cifrar a un arreglo de unsigned char con padding
+        plaintext = std::vector<unsigned char>(text.begin(), text.end());
+        plaintext = addPadding(plaintext);
+
+        // Pedir al usuario la llave para cifrar y la frase de comparación
+        std::cout << "Introduce la llave para cifrar el texto (entero): ";
+        std::cin >> keyToEncrypt;
+
+        // Cifrar el texto usando la llave proporcionada
+        std::cout << "\nIniciando cifrado..." << std::endl;
+        cipher = plaintext; // Copiar el plaintext
+        encrypt_DES_reduced(keyToEncrypt, cipher.data(), cipher.size());
+        std::cout << "Cifrado terminado." << std::endl;
+
+        // Mostrar el texto cifrado
+        std::cout << "\nTexto cifrado: ";
+        for (unsigned char c : cipher) {
+            printf("%02X", c);
+        }
+        std::cout << std::endl;
+
+        // Pedir la frase para verificar el descifrado
+        std::cout << "Introduce la frase para verificar el descifrado: ";
+        std::cin.ignore();
+        std::getline(std::cin, phrase);
+        std::cout << std::endl;
+    }
+
+    // Broadcast de keyToEncrypt, cipher, phrase y plaintext a todos los procesos
+    MPI_Bcast(&keyToEncrypt, 1, MPI_UNSIGNED_LONG_LONG, 0, MPI_COMM_WORLD);
+
+    int dataSize;
+    if (rank == 0) {
+        dataSize = cipher.size();
+    }
+    MPI_Bcast(&dataSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank != 0) {
+        cipher.resize(dataSize);
+        plaintext.resize(dataSize);
+    }
+    MPI_Bcast(cipher.data(), dataSize, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+    MPI_Bcast(plaintext.data(), dataSize, MPI_UNSIGNED_CHAR, 0, MPI_COMM_WORLD);
+
+    int phraseSize;
+    if (rank == 0) {
+        phraseSize = phrase.size();
+    }
+    MPI_Bcast(&phraseSize, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank != 0) {
+        phrase.resize(phraseSize);
+    }
+    MPI_Bcast(&phrase[0], phraseSize, MPI_CHAR, 0, MPI_COMM_WORLD);
+
+    // Generar pares plaintext-ciphertext para el criptoanálisis
+    const unsigned long long NUM_PAIRS = 10000000; // 10 millones de pares
+    unsigned long long pairsPerProcess = NUM_PAIRS / size;
+    unsigned long long startPair = rank * pairsPerProcess;
+    unsigned long long endPair = (rank == size - 1) ? NUM_PAIRS : startPair + pairsPerProcess;
+
+    // Inicializar aleatoriedad con semilla distinta en cada proceso
+    srand(time(0) + rank * 12345);
+
+    std::vector<std::vector<unsigned char>> plaintexts;
+    std::vector<std::vector<unsigned char>> ciphertexts;
+
+    for (unsigned long long i = startPair; i < endPair; ++i) {
+        // Generar un texto plano aleatorio de 8 bytes
+        std::vector<unsigned char> pt(8);
+        for (int j = 0; j < 8; ++j) {
+            pt[j] = rand() % 256;
+        }
+        plaintexts.push_back(pt);
+
+        // Cifrar el texto plano con la clave desconocida
+        std::vector<unsigned char> ct = pt;
+        encrypt_DES_reduced(keyToEncrypt, ct.data(), ct.size());
+        ciphertexts.push_back(ct);
+    }
+
+    // Cada proceso realiza el conteo local
+    const int NUM_KEY_BITS = 6; // Número de bits de la subclave que estamos atacando
+    const int NUM_SUBKEYS = 1 << NUM_KEY_BITS; // 64 posibles subclaves
+
+    std::vector<int> localCounters(NUM_SUBKEYS, 0);
+
+    for (size_t i = 0; i < plaintexts.size(); ++i) {
+        const std::vector<unsigned char>& pt = plaintexts[i];
+        const std::vector<unsigned char>& ct = ciphertexts[i];
+
+        for (int k = 0; k < NUM_SUBKEYS; ++k) {
+            int approx = calculateApproximation(pt, ct, k);
+
+            if (approx == 0) {
+                localCounters[k]++;
+            }
+
+            // Para depuración: imprimir valores intermedios
+            if (i < 5 && k < 5) { // Limitar la cantidad de impresiones
+                std::cout << "Pair " << i << ", Subkey " << k << ", Approx: " << approx << std::endl;
+            }
+        }
+    }
+
+    std::vector<double> localBiases(NUM_SUBKEYS, 0.0);
+    for (int k = 0; k < NUM_SUBKEYS; ++k) {
+        localBiases[k] = calculateBias(localCounters[k], plaintexts.size());
+    }
+
+    // Reducir los conteos locales
+    std::vector<double> globalBiases(NUM_SUBKEYS, 0.0);
+    MPI_Reduce(localBiases.data(), globalBiases.data(), NUM_SUBKEYS, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    // En el proceso 0, determinar la subclave más probable
+    if (rank == 0) {
+        double maxBias = 0.0;
+        int bestKey = -1;
+        for (int k = 0; k < NUM_SUBKEYS; ++k) {
+            globalBiases[k] /= size; // Normalizamos el bias dividiendo entre el número de procesos
+
+            if (globalBiases[k] > maxBias) {
+                maxBias = globalBiases[k];
+                bestKey = k;
+            }
+            std::cout << "Subclave " << k << ": bias normalizado = " << globalBiases[k] << std::endl;
+        }
+
+        std::cout << "La subclave más probable es: " << bestKey << std::endl;
+
+        // Intentar descifrar el texto cifrado original con la subclave encontrada
+        // Dado que solo tenemos parte de la clave, podemos probar combinaciones para el resto
+
+        unsigned long long foundKey = 0;
+        bool keyFound = false;
+
+        // Asumiendo que conocemos el resto de la clave (para simplificar)
+        // En un escenario real, deberíamos intentar todas las combinaciones posibles para los bits desconocidos
+        unsigned long long possibleKey = (keyToEncrypt & (~((1ULL << NUM_KEY_BITS) - 1))) | bestKey;
+
+        std::vector<unsigned char> temp = cipher;
+        decrypt_DES_reduced(possibleKey, temp.data(), temp.size());
+        std::vector<unsigned char> decryptedData = removePadding(temp);
+        std::string decryptedText(decryptedData.begin(), decryptedData.end());
+
+        if (decryptedText.find(phrase) != std::string::npos) {
+            foundKey = possibleKey;
+            keyFound = true;
+            std::cout << "\nLlave encontrada: " << foundKey << std::endl;
+            std::cout << "Texto descifrado: " << decryptedText << std::endl;
+        } else {
+            std::cout << "No se pudo encontrar la clave completa con la subclave obtenida." << std::endl;
+        }
+    }
+
+    MPI_Finalize();
+    return 0;
+}
