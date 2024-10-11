@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
     // Clave conocida dentro del rango reducido
-    uint64_t knownKey = 12345678; // Asegúrate de que esté dentro de totalKeys
+    uint64_t knownKey = 1234567; // Asegúrate de que esté dentro de totalKeys
 
     // Texto plano a cifrar
     std::string plaintext = "This is a test message.";
