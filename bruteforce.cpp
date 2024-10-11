@@ -63,7 +63,7 @@ int main(int argc, char* argv[]) {
     std::string plaintext = "This is a test message.";
 
     // Frase a buscar en el texto descifrado
-    std::string phrase = " test ";
+    std::string phrase = "test";
 
     // Convertir el texto plano a vector de unsigned char
     std::vector<unsigned char> cipher(plaintext.begin(), plaintext.end());
