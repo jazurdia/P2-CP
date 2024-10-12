@@ -263,3 +263,7 @@ int main(int argc, char* argv[]) {
     MPI_Finalize();
     return 0;
 }
+
+
+// mpic++ -o bf_par bf_par.cpp -lssl -lcrypto
+// mpirun -np 4 ./bf_par
