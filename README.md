@@ -26,7 +26,7 @@ Este proyecto implementa un ataque de fuerza bruta para descifrar un texto cifra
 
 3. **Versión híbrida (MPI + OpenMP):**
    ```bash
-   mpic++ -fopenmp -o openMP openMP.cpp -lssl -lcrypto
+      mpic++ -fopenmp -o op openMP.cpp -lssl -lcrypto
    ```
 
 4. **Version secuencial Meet in the middle**
@@ -43,7 +43,7 @@ Este proyecto implementa un ataque de fuerza bruta para descifrar un texto cifra
 
 1. **Versión secuencial:**
    ```bash
-   ./bf_seq input.t
+   ./bf_seq 
    ```
 
 2. **Versión paralela (MPI):**
@@ -53,7 +53,7 @@ Este proyecto implementa un ataque de fuerza bruta para descifrar un texto cifra
 
 3. **Versión híbrida (MPI + OpenMP):**
    ```bash
-   mpirun -np 4 ./openMP 
+      mpirun -np 4 ./op
    ```
 
 4. **Version secuencial Meet in the middle**
